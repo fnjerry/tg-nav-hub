@@ -1,0 +1,6 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+sqlmodel>=0.0.16
+telethon>=1.34
+pydantic-settings>=2.2
+python-socks[asyncio]>=2.4.0

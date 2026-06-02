@@ -1,0 +1,11 @@
+---
+description: 开发与预览固定使用 8765 端口
+alwaysApply: true
+---
+
+# 固定端口 8765
+
+- **本地**开发、预览、脚本示例 **一律使用 `http://127.0.0.1:8765`**；云端部署由平台注入 `PORT`，见 `README.md`。
+- **禁止**为排查问题而改用 8766、8767、8000 等其他端口；端口被占用时运行 `.\scripts\free_port.ps1` 或 `.\run.ps1`（会清理 uvicorn 孤儿进程）。
+- 启动方式：`.\run.ps1` 或 `python -m app`（读取 `.env` 的 `HOST`/`PORT`，`PORT` 必须为 `8765`）。
+- 不要使用 `uvicorn ... --reload`（易产生孤儿 worker）；调试配置与 `app/__main__.py` 均已关闭 reload。

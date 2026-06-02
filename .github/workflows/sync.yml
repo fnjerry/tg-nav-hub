@@ -1,0 +1,17 @@
+# 云端定时采集：Secrets 填 SITE_URL=https://ai.24s.net 与 ADMIN_SYNC_TOKEN
+name: Daily Telegram sync
+
+on:
+  schedule:
+    # UTC 01:00 ≈ 北京时间 09:00（夏令时可能有 1 小时偏差，可在仓库 Settings 里改）
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger /api/sync
+        run: |
+          curl -fsS -X POST "${{ secrets.SITE_URL }}/api/sync" \
+            -H "Authorization: Bearer ${{ secrets.ADMIN_SYNC_TOKEN }}"
