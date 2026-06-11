@@ -80,30 +80,62 @@ git push -u origin main
 
 **成功标志**：浏览器打开 https://github.com/fnjerry/tg-nav-hub 能看到 `app/`、`render.yaml`、`README.md` 等文件。
 
-### 1.4 推送失败：连接 GitHub 超时
+### 1.4 推送失败：`unable to connect to github.com` / 超时
 
-国内常见，可任选一种：
+#### 原因 A（你这台机器很可能命中）
 
-**方式 A：临时 HTTP 代理（不改全局 git 配置）**
+全局 Git 配置 `C:\Users\Administrator\.gitconfig` 里有：
 
-```powershell
-git -c http.proxy=http://192.168.50.5:7890 -c https.proxy=http://192.168.50.5:7890 push -u origin main
+```ini
+[url "git://"]
+    insteadOf = https://
 ```
 
-把 `192.168.50.5:7890` 换成你 Clash/v2rayN 的 HTTP 代理地址。
+会把 `https://github.com/...` **改写成 `git://`**（9418 端口），在国内经常连不上，表现就是 **Connection timed out**。
 
-**方式 B：SSH**
+**永久修复（推荐）**：用记事本打开 `.gitconfig`，**删掉**上面这段 `[url "git://"]` 整节（或注释掉），保存后再 `git push`。
+
+#### 原因 B：HTTPS 直连被墙
+
+即使修了上面，HTTPS 有时仍超时，**推荐改用 SSH 走 443 端口**（项目已配好 `~/.ssh/config`）。
+
+**一步推送脚本**：
 
 ```powershell
-git remote set-url origin git@github.com:fnjerry/tg-nav-hub.git
-git push -u origin main
+cd C:\Users\Administrator\Projects\tg-nav-hub
+.\scripts\git_push.ps1
 ```
 
-需先在 GitHub → **Settings** → **SSH and GPG keys** 添加公钥。
+**首次需把 SSH 公钥加到 GitHub**（只需做一次）：
 
-**方式 C：GitHub Desktop / gh cli**
+```powershell
+Get-Content $env:USERPROFILE\.ssh\id_ed25519.pub
+```
 
-用图形工具登录后推送同一仓库。
+1. 复制输出的整行（以 `ssh-ed25519` 开头）
+2. 打开 https://github.com/settings/keys
+3. **New SSH key** → Title 随意 → Key 粘贴 → **Add SSH key**
+4. 再执行 `.\scripts\git_push.ps1`
+
+验证 SSH 是否通：
+
+```powershell
+ssh -T git@github.com
+```
+
+成功会看到：`Hi fnjerry! You've successfully authenticated...`
+
+#### 方式 C：临时 HTTP 代理（仅 HTTPS 时）
+
+```powershell
+git -c url.git://.insteadof= -c http.proxy=http://192.168.50.5:7890 push origin main
+```
+
+代理地址换成你的 Clash HTTP 端口。
+
+#### 方式 D：GitHub Desktop
+
+用图形客户端登录 GitHub 后推送，有时比命令行省心。
 
 ---
 
