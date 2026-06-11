@@ -1,0 +1,26 @@
+# Render: 连接 github.com/fnjerry/tg-nav-hub，自定义域 ai.24s.net
+# 文档见 docs/deploy-ai.24s.net.md
+services:
+  - type: web
+    name: tg-nav-hub
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.0"
+      - key: DATABASE_PATH
+        value: /data/nav.db
+      - key: ENABLE_DAILY_SYNC
+        value: "true"
+      - key: DAILY_SYNC_TIME
+        value: "09:00"
+      # 在 Render 控制台填写（Secret），勿写入仓库：
+      # TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_SESSION_STRING,
+      # TELEGRAM_CHANNELS, ADMIN_SYNC_TOKEN, TELEGRAM_PROXY（可选）
+    disk:
+      name: tg-nav-data
+      mountPath: /data
+      sizeGB: 1
