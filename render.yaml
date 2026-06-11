@@ -12,15 +12,12 @@ services:
       - key: PYTHON_VERSION
         value: "3.12.0"
       - key: DATABASE_PATH
-        value: /data/nav.db
+        value: data/nav.db
       - key: ENABLE_DAILY_SYNC
         value: "true"
       - key: DAILY_SYNC_TIME
         value: "09:00"
       # 在 Render 控制台填写（Secret），勿写入仓库：
       # TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_SESSION_STRING,
-      # TELEGRAM_CHANNELS, ADMIN_SYNC_TOKEN, TELEGRAM_PROXY（可选）
-    disk:
-      name: tg-nav-data
-      mountPath: /data
-      sizeGB: 1
+      # TELEGRAM_CHANNELS, ADMIN_SYNC_TOKEN
+      # 免费档无持久盘，数据在实例重启/重新部署后会丢失；要持久化请改 plan: starter 并加 disk
