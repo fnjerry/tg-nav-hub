@@ -4,7 +4,8 @@
 
 - 本地开发：**http://127.0.0.1:8765**（端口固定，见 `.cursor/rules/port-8765.mdc`）
 - 启动：`.\run.ps1` 或 `python -m app`
-- **线上（规划）**：GitHub [`fnjerry/tg-nav-hub`](https://github.com/fnjerry/tg-nav-hub) → Render → **https://ai.24s.net**（分步见 [`docs/deploy-ai.24s.net.md`](docs/deploy-ai.24s.net.md)）
+- **线上**：GitHub [`fnjerry/tg-nav-hub`](https://github.com/fnjerry/tg-nav-hub) → Render → **https://ai.24s.net**  
+  → **详细图文步骤**：[部署教程（从零到上线）](docs/deploy-ai.24s.net.md)
 
 ---
 
@@ -23,7 +24,9 @@
 
 ---
 
-## 部署流程（Render + GitHub，可绑域名）
+## 部署流程（简版）
+
+> 完整逐步教程（含 Cloudflare、环境变量、排错）：**[docs/deploy-ai.24s.net.md](docs/deploy-ai.24s.net.md)**
 
 ### 1. 推到 GitHub
 
