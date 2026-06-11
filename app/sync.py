@@ -95,7 +95,13 @@ async def sync_channels() -> dict:
             "errors": [f"连接 Telegram 失败：{e.__class__.__name__}: {e}"],
         }
 
-    stats = {"channels": 0, "new_links": 0, "messages_seen": 0, "errors": []}
+    stats = {
+        "channels": 0,
+        "new_links": 0,
+        "messages_seen": 0,
+        "history_messages_seen": 0,
+        "errors": [],
+    }
 
     try:
         with Session(_engine) as session:
@@ -105,6 +111,7 @@ async def sync_channels() -> dict:
                     stats["channels"] += 1
                     stats["new_links"] += ch_stats["new_links"]
                     stats["messages_seen"] += ch_stats["messages_seen"]
+                    stats["history_messages_seen"] += ch_stats["history_messages_seen"]
                 except RPCError as e:
                     stats["errors"].append(f"{username}: {e.__class__.__name__}: {e}")
                 except Exception as e:  # noqa: BLE001
@@ -117,30 +124,20 @@ async def sync_channels() -> dict:
 
 
 
-async def _sync_one_channel(client: TelegramClient, session: Session, username: str) -> dict:
-    cursor = session.get(ChannelCursor, username)
-    if cursor is None:
-        cursor = ChannelCursor(channel_username=username, last_message_id=0)
-        session.add(cursor)
-        session.commit()
-        session.refresh(cursor)
-
-    last_id = cursor.last_message_id
-
-    if last_id == 0:
-        messages = await client.get_messages(username, limit=100)
-    else:
-        messages = await client.get_messages(username, min_id=last_id, limit=200)
-
+def _process_messages(
+    session: Session, username: str, messages: list
+) -> tuple[int, int, int | None, int | None]:
     new_links = 0
     seen = 0
-    max_id = last_id
+    min_id: int | None = None
+    max_id: int | None = None
 
     for msg in messages:
         seen += 1
         if not msg.id:
             continue
-        max_id = max(max_id, msg.id)
+        min_id = msg.id if min_id is None else min(min_id, msg.id)
+        max_id = msg.id if max_id is None else max(max_id, msg.id)
         text = (getattr(msg, "text", None) or getattr(msg, "message", None) or "") or ""
         if not text.strip():
             continue
@@ -169,8 +166,51 @@ async def _sync_one_channel(client: TelegramClient, session: Session, username: 
             session.add(link)
             new_links += 1
 
-    cursor.last_message_id = max(max_id, cursor.last_message_id)
+    return new_links, seen, min_id, max_id
+
+
+async def _sync_one_channel(client: TelegramClient, session: Session, username: str) -> dict:
+    batch = settings.sync_batch_size
+    cursor = session.get(ChannelCursor, username)
+    if cursor is None:
+        cursor = ChannelCursor(channel_username=username, last_message_id=0, history_min_id=0)
+        session.add(cursor)
+        session.commit()
+        session.refresh(cursor)
+
+    last_id = cursor.last_message_id
+    if last_id == 0:
+        messages = await client.get_messages(username, limit=batch)
+    else:
+        messages = await client.get_messages(username, min_id=last_id, limit=batch)
+
+    new_links, seen, min_id, max_id = _process_messages(session, username, messages)
+    if max_id is not None:
+        cursor.last_message_id = max(max_id, cursor.last_message_id)
+    if min_id is not None and cursor.history_min_id == 0:
+        cursor.history_min_id = min_id
+
+    history_seen = 0
+    for _ in range(max(settings.sync_backfill_batches, 0)):
+        if cursor.history_min_id <= 0:
+            break
+        older = await client.get_messages(username, max_id=cursor.history_min_id, limit=batch)
+        if not older:
+            cursor.history_min_id = 0
+            break
+        batch_new, batch_seen, batch_min, _ = _process_messages(session, username, older)
+        new_links += batch_new
+        history_seen += batch_seen
+        if batch_min is None:
+            cursor.history_min_id = 0
+            break
+        cursor.history_min_id = batch_min
+
     session.add(cursor)
     session.commit()
 
-    return {"new_links": new_links, "messages_seen": seen}
+    return {
+        "new_links": new_links,
+        "messages_seen": seen,
+        "history_messages_seen": history_seen,
+    }

@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     enable_daily_sync: bool = True
     daily_sync_time: str = "09:00"
 
+    sync_batch_size: int = Field(default=200, description="每批拉取消息条数")
+    sync_backfill_batches: int = Field(default=10, description="单次 sync 最多回填几批历史")
+
     @field_validator("port")
     @classmethod
     def _port_fixed_local(cls, v: int) -> int:

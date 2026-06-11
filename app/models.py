@@ -7,6 +7,8 @@ from sqlmodel import Field, SQLModel
 class ChannelCursor(SQLModel, table=True):
     channel_username: str = Field(primary_key=True)
     last_message_id: int = Field(default=0)
+    # >0：尚需回填更早消息（max_id=history_min_id）；0 表示历史已扫完
+    history_min_id: int = Field(default=0)
 
 
 class Link(SQLModel, table=True):
