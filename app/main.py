@@ -14,8 +14,8 @@ from sqlmodel import Session, func, select
 from app.classify import infer_category
 from app.message_parse import parse_resource_title_desc
 from app.config import settings
-from app.daily_scheduler import start_daily_sync_task
-from app.database import get_session, init_db
+from app.daily_scheduler import start_daily_sync_task, start_startup_sync_task
+from app.database import data_directory, get_session, init_db
 from app.models import Link
 from app.sync import refresh_posted_times, sync_channels
 
@@ -64,6 +64,7 @@ def _startup() -> None:
     init_db()
     STATIC.mkdir(parents=True, exist_ok=True)
     start_daily_sync_task()
+    start_startup_sync_task()
 
 
 @app.get("/health")
@@ -117,7 +118,7 @@ async def trigger_sync(_: None = Depends(_verify_sync_token)) -> dict:
 
 @app.get("/api/sync/status")
 def sync_status() -> dict:
-    path = ROOT / "data" / "last_sync.json"
+    path = data_directory() / "last_sync.json"
     if not path.is_file():
         return {"last": None}
     try:

@@ -6,13 +6,14 @@ import asyncio
 import json
 import logging
 from datetime import datetime, time, timedelta, timezone
-from pathlib import Path
+
+from sqlmodel import Session
 
 from app.config import settings
+from app.database import data_directory
 from app.sync import sync_channels
 
 logger = logging.getLogger("tg_nav_hub.scheduler")
-ROOT = Path(__file__).resolve().parent.parent
 
 
 def _parse_hhmm(value: str) -> time:
@@ -35,9 +36,7 @@ def _seconds_until(target: time) -> float:
 
 def _save_result(result: dict) -> None:
     payload = {"at": datetime.now(timezone.utc).isoformat(), "result": result, "source": "scheduler"}
-    data_dir = ROOT / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    (data_dir / "last_sync.json").write_text(
+    (data_directory() / "last_sync.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
@@ -69,6 +68,43 @@ async def daily_sync_loop() -> None:
             await run_scheduled_sync()
         except Exception:
             logger.exception("daily sync failed")
+
+
+async def startup_sync_if_empty() -> None:
+    if not settings.sync_on_startup:
+        return
+    if not settings.channel_list():
+        return
+    if not settings.telegram_api_id or not (settings.telegram_api_hash or "").strip():
+        return
+    if not settings.use_bot_session() and not settings.telegram_session_string:
+        return
+
+    from sqlmodel import func, select
+
+    from app.database import _engine
+    from app.models import Link
+
+    with Session(_engine) as session:
+        count = session.exec(select(func.count()).select_from(Link)).one()
+        if count > 0:
+            return
+
+    logger.info("startup: database empty, running initial sync")
+    try:
+        result = await run_scheduled_sync()
+        logger.info(
+            "startup sync done: new_links=%s history_messages_seen=%s errors=%s",
+            result.get("new_links"),
+            result.get("history_messages_seen"),
+            result.get("errors"),
+        )
+    except Exception:
+        logger.exception("startup sync failed")
+
+
+def start_startup_sync_task() -> None:
+    asyncio.create_task(startup_sync_if_empty())
 
 
 def start_daily_sync_task() -> None:

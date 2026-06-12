@@ -5,7 +5,12 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from app.config import settings
 
-Path("data").mkdir(parents=True, exist_ok=True)
+
+def data_directory() -> Path:
+    d = Path(settings.database_path).expanduser().resolve().parent
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
 
 _engine = create_engine(
     f"sqlite:///{settings.database_path}",
@@ -39,6 +44,7 @@ def _migrate_sqlite() -> None:
 
 
 def init_db() -> None:
+    data_directory()
     SQLModel.metadata.create_all(_engine)
     _migrate_sqlite()
 

@@ -45,6 +45,10 @@ class Settings(BaseSettings):
 
     sync_batch_size: int = Field(default=200, description="每批拉取消息条数")
     sync_backfill_batches: int = Field(default=10, description="单次 sync 最多回填几批历史")
+    sync_on_startup: bool = Field(
+        default=False,
+        description="库为空时启动后自动采集；云端默认开启，可用 SYNC_ON_STARTUP=false 关闭",
+    )
 
     @field_validator("port")
     @classmethod
@@ -64,6 +68,8 @@ class Settings(BaseSettings):
             self.host = "0.0.0.0"
             if os.getenv("PORT"):
                 self.port = int(os.getenv("PORT"))
+            if os.getenv("SYNC_ON_STARTUP") is None:
+                self.sync_on_startup = True
         return self
 
     @field_validator("telegram_session_string", mode="before")
