@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -124,6 +125,15 @@ async def sync_channels() -> dict:
 
 
 
+def _msg_posted_at(msg) -> datetime:
+    posted = getattr(msg, "date", None)
+    if posted is None:
+        return datetime.utcnow()
+    if posted.tzinfo is not None:
+        return posted.astimezone(timezone.utc).replace(tzinfo=None)
+    return posted
+
+
 def _process_messages(
     session: Session, username: str, messages: list
 ) -> tuple[int, int, int | None, int | None]:
@@ -149,9 +159,12 @@ def _process_messages(
         title_base, desc_base = parse_resource_title_desc(text)
         tags = tags_to_csv(extract_hashtags(text))
 
+        posted_at = _msg_posted_at(msg)
         for url in urls:
             exists = session.exec(select(Link).where(Link.url == url)).first()
             if exists:
+                if exists.created_at != posted_at:
+                    exists.created_at = posted_at
                 continue
             link = Link(
                 url=url,
@@ -162,6 +175,7 @@ def _process_messages(
                 message_id=msg.id,
                 tags=tags,
                 source_text=text[:2000],
+                created_at=posted_at,
             )
             session.add(link)
             new_links += 1
@@ -214,3 +228,68 @@ async def _sync_one_channel(client: TelegramClient, session: Session, username: 
         "messages_seen": seen,
         "history_messages_seen": history_seen,
     }
+
+
+async def refresh_posted_times() -> dict:
+    """按 Telegram 消息时间修正 created_at，便于按发布时间排序展示。"""
+    channels = settings.channel_list()
+    if not channels:
+        return {"channels": 0, "updated": 0, "errors": ["未配置 TELEGRAM_CHANNELS"]}
+
+    try:
+        client = await _connect_client()
+    except RuntimeError as e:
+        return {"channels": 0, "updated": 0, "errors": [str(e)]}
+    except Exception as e:  # noqa: BLE001
+        return {
+            "channels": 0,
+            "updated": 0,
+            "errors": [f"连接 Telegram 失败：{e.__class__.__name__}: {e}"],
+        }
+
+    stats = {"channels": 0, "updated": 0, "errors": []}
+    try:
+        with Session(_engine) as session:
+            for username in channels:
+                try:
+                    stats["channels"] += 1
+                    stats["updated"] += await _refresh_channel_posted_times(client, session, username)
+                except RPCError as e:
+                    stats["errors"].append(f"{username}: {e.__class__.__name__}: {e}")
+                except Exception as e:  # noqa: BLE001
+                    stats["errors"].append(f"{username}: {e.__class__.__name__}: {e}")
+            session.commit()
+    finally:
+        await client.disconnect()
+
+    return stats
+
+
+async def _refresh_channel_posted_times(
+    client: TelegramClient, session: Session, username: str
+) -> int:
+    links = list(
+        session.exec(
+            select(Link)
+            .where(Link.channel_username == username)
+            .order_by(Link.message_id.desc())
+        ).all()
+    )
+    if not links:
+        return 0
+
+    updated = 0
+    chunk_size = 100
+    for i in range(0, len(links), chunk_size):
+        chunk_links = links[i : i + chunk_size]
+        messages = await client.get_messages(username, ids=[link.message_id for link in chunk_links])
+        by_id = {msg.id: msg for msg in messages if msg and msg.id}
+        for link in chunk_links:
+            msg = by_id.get(link.message_id)
+            if not msg:
+                continue
+            posted_at = _msg_posted_at(msg)
+            if link.created_at != posted_at:
+                link.created_at = posted_at
+                updated += 1
+    return updated

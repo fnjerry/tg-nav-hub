@@ -17,7 +17,7 @@ from app.config import settings
 from app.daily_scheduler import start_daily_sync_task
 from app.database import get_session, init_db
 from app.models import Link
-from app.sync import sync_channels
+from app.sync import refresh_posted_times, sync_channels
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
@@ -74,7 +74,12 @@ def health() -> dict[str, str]:
 @app.get("/api/categories", response_model=list[CategoryCount])
 def list_categories(session: Session = Depends(get_session)) -> list[CategoryCount]:
     cnt = func.count(Link.id).label("cnt")
-    stmt = select(Link.category, cnt).group_by(Link.category).order_by(cnt.desc())
+    latest = func.max(Link.message_id).label("latest")
+    stmt = (
+        select(Link.category, cnt, latest)
+        .group_by(Link.category)
+        .order_by(latest.desc(), cnt.desc())
+    )
     rows = session.exec(stmt).all()
     return [CategoryCount(name=r[0] or "未分类", count=int(r[1])) for r in rows]
 
@@ -85,7 +90,7 @@ def list_links(
     category: str | None = Query(default=None, description="Filter by category name"),
     session: Session = Depends(get_session),
 ) -> list[LinkOut]:
-    stmt = select(Link).order_by(Link.created_at.desc())
+    stmt = select(Link).order_by(Link.message_id.desc(), Link.created_at.desc(), Link.id.desc())
     if category:
         stmt = stmt.where(Link.category == category.strip())
     if q:
@@ -119,6 +124,12 @@ def sync_status() -> dict:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return {"last": None, "error": "invalid last_sync.json"}
+
+
+@app.post("/api/refresh-times")
+async def refresh_times(_: None = Depends(_verify_sync_token)) -> dict:
+    """按频道消息时间修正 created_at（需 Bearer）。"""
+    return await refresh_posted_times()
 
 
 @app.post("/api/reclassify")

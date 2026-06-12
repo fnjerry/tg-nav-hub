@@ -626,8 +626,8 @@
       <div class="cat-head">
         <h2>浏览分类</h2>
         <div class="view-toggle" role="group" aria-label="列表视图">
-          <button type="button" id="view-grouped" class="on">分组</button>
-          <button type="button" id="view-flat">平铺</button>
+          <button type="button" id="view-grouped">分组</button>
+          <button type="button" id="view-flat" class="on">平铺</button>
         </div>
       </div>
       <div class="cat-rail-wrap">
@@ -655,7 +655,26 @@
     let timer;
     let currentCategory = "";
     let categoryCounts = [];
-    let viewMode = "grouped";
+    let viewMode = "flat";
+
+    function newestKey(item) {
+      const msgId = Number(item.message_id) || 0;
+      const ts = parseCollectedAt(item.created_at)?.getTime() || 0;
+      return [msgId, ts, Number(item.id) || 0];
+    }
+
+    function compareNewest(a, b) {
+      const ka = newestKey(a);
+      const kb = newestKey(b);
+      for (let i = 0; i < ka.length; i++) {
+        if (kb[i] !== ka[i]) return kb[i] - ka[i];
+      }
+      return 0;
+    }
+
+    function sortNewest(items) {
+      return [...items].sort(compareNewest);
+    }
 
     const CAT_THEME = {
       AI: { bg: "rgba(167, 139, 250, 0.15)", text: "#c4b5fd", border: "rgba(167, 139, 250, 0.35)", dot: "#a78bfa" },
@@ -716,7 +735,7 @@
 
     function formatCollectedAt(iso) {
       const d = parseCollectedAt(iso);
-      if (!d) return { text: "收录时间未知", datetime: "" };
+      if (!d) return { text: "发布时间未知", datetime: "" };
       const now = new Date();
       const pad = (n) => String(n).padStart(2, "0");
       const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -820,12 +839,12 @@
               <h2 class="card-title">${escapeHtml(item.title || host)}</h2>
               <span class="card-cat" data-cat>${escapeHtml(cat)}</span>
             </div>
-            <div class="card-time" title="采集入库时间">
+            <div class="card-time" title="频道发布时间">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.75"/>
                 <path d="M12 7v5l3 2" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
               </svg>
-              <span>收录</span>
+              <span>发布</span>
               <time datetime="${escapeAttr(collected.datetime)}">${escapeHtml(collected.text)}</time>
             </div>
             <p class="card-host">${escapeHtml(host)}</p>
@@ -856,7 +875,7 @@
     function renderFlat(items) {
       const grid = document.createElement("div");
       grid.className = "grid";
-      for (const item of items) grid.appendChild(buildCard(item));
+      for (const item of sortNewest(items)) grid.appendChild(buildCard(item));
       root.appendChild(grid);
     }
 
@@ -869,9 +888,14 @@
         buckets.get(cat).push(item);
       }
       const cats = [...new Set([...order.filter((n) => buckets.has(n)), ...buckets.keys()])];
+      cats.sort((a, b) => {
+        const maxA = Math.max(...(buckets.get(a)?.map((x) => newestKey(x)[0]) || [0]));
+        const maxB = Math.max(...(buckets.get(b)?.map((x) => newestKey(x)[0]) || [0]));
+        return maxB - maxA;
+      });
       for (const cat of cats) {
-        const list = buckets.get(cat);
-        if (!list?.length) continue;
+        const list = sortNewest(buckets.get(cat) || []);
+        if (!list.length) continue;
         const block = document.createElement("section");
         block.className = "section-block";
         const h = document.createElement("h3");
