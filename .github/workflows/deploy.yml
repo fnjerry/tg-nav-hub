@@ -1,0 +1,28 @@
+# push 到 main 后：等 Render 部署完成，再触发一次 sync 确保线上有数据
+name: Deploy verify and sync
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify-and-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Render deploy
+        run: sleep 90
+
+      - name: Health check
+        run: curl -fsS "${{ secrets.SITE_URL }}/health"
+
+      - name: Trigger sync
+        run: |
+          curl -fsS -X POST "${{ secrets.SITE_URL }}/api/sync" \
+            -H "Authorization: Bearer ${{ secrets.ADMIN_SYNC_TOKEN }}"
+
+      - name: Check link count
+        run: |
+          count=$(curl -fsS "${{ secrets.SITE_URL }}/api/links" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
+          echo "links=$count"
+          test "$count" -gt 0
